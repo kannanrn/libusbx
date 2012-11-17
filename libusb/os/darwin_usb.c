@@ -595,7 +595,7 @@ static int darwin_check_configuration (struct libusb_context *ctx, struct libusb
 
 static int darwin_cache_device_descriptor (struct libusb_context *ctx, struct libusb_device *dev, usb_device_t **device) {
   struct darwin_device_priv *priv;
-  int retries = 5, delay = 30000;
+  int retries = 2, delay = 30000;
   int unsuspended = 0, try_unsuspend = 1, try_reconfigure = 1;
   int is_open = 0;
   int ret = 0, ret2;
@@ -632,6 +632,11 @@ static int darwin_cache_device_descriptor (struct libusb_context *ctx, struct li
     if (kIOReturnOverrun == ret && kUSBDeviceDesc == priv->dev_descriptor.bDescriptorType)
       /* received an overrun error but we still received a device descriptor */
       ret = kIOReturnSuccess;
+
+    if (kIOUSBVendorIDAppleComputer == idVendor) {
+      /* NTH: don't bother retrying or unsuspending Apple devices */
+      break;
+    }
 
     if (kIOReturnSuccess == ret && (0 == priv->dev_descriptor.bNumConfigurations ||
 				    0 == priv->dev_descriptor.bcdUSB)) {
@@ -936,6 +941,8 @@ static void darwin_close (struct libusb_device_handle *dev_handle) {
 	CFRelease (priv->cfSource);
       }
 
+      /* suspend the device */
+      (*(dpriv->device))->USBDeviceSuspend(dpriv->device, 1);
       /* close the device */
       kresult = (*(dpriv->device))->USBDeviceClose(dpriv->device);
       if (kresult) {
