@@ -248,8 +248,7 @@ static usb_device_t **usb_get_next_device (io_iterator_t deviceIterator, UInt32 
   (void)(*plugInInterface)->QueryInterface(plugInInterface, CFUUIDGetUUIDBytes(DeviceInterfaceID),
 					   (LPVOID)&device);
 
-  (*plugInInterface)->Stop(plugInInterface);
-  IODestroyPlugInInterface (plugInInterface);
+  (*plugInInterface)->Release (plugInInterface);
 
   /* get the location from the device */
   if (locationp)
@@ -609,9 +608,6 @@ static int darwin_cache_device_descriptor (struct libusb_context *ctx, struct li
 
   priv = (struct darwin_device_priv *)dev->os_priv;
 
-  /* try to open the device (we can usually continue even if this fails) */
-  is_open = ((*device)->USBDeviceOpenSeize(device) == kIOReturnSuccess);
-
   /**** retrieve device descriptor ****/
   do {
     /* Set up request for device descriptor */
@@ -654,7 +650,7 @@ static int darwin_cache_device_descriptor (struct libusb_context *ctx, struct li
       ret = kIOUSBPipeStalled;
     }
 
-    if (kIOReturnSuccess != ret && is_open && try_unsuspend) {
+    if (kIOReturnSuccess != ret && try_unsuspend) {
       /* device may be suspended. unsuspend it and try again */
 #if DeviceVersion >= 320
       UInt32 info;
@@ -666,6 +662,9 @@ static int darwin_cache_device_descriptor (struct libusb_context *ctx, struct li
 #endif
 
       if (try_unsuspend) {
+        /* try to open the device (we can usually continue even if this fails) */
+        is_open = ((*device)->USBDeviceOpenSeize(device) == kIOReturnSuccess);
+
 	/* resume the device */
 	ret2 = (*device)->USBDeviceSuspend (device, 0);
 	if (kIOReturnSuccess != ret2) {
@@ -1136,7 +1135,8 @@ static int darwin_claim_interface(struct libusb_device_handle *dev_handle, int i
 					       CFUUIDGetUUIDBytes(kIOUSBInterfaceInterfaceID),
 					       (LPVOID)&cInterface->interface);
   /* We no longer need the intermediate plug-in */
-  IODestroyPlugInInterface (plugInInterface);
+  (*plugInInterface)->Release (plugInInterface);
+
   if (kresult || !cInterface->interface) {
     usbi_err (HANDLE_CTX (dev_handle), "QueryInterface: %s", darwin_error_str(kresult));
     return darwin_to_libusb (kresult);
